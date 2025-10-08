@@ -65,13 +65,44 @@ public class Protocol {
 	public void sendMetadata()   {
         BufferedReader BufferedReadercsvReader;
         try {
-            BufferedReadercsvReader = new BufferedReader(new FileReader("data.csv"));
+            BufferedReadercsvReader = new BufferedReader(new FileReader(inputFile));
             String line;
+            int i = 0;
+
+            while ((line = BufferedReadercsvReader.readLine()) != null) {
+                i++;
+                // Data on each line
+                System.out.println(line);
+            }
+
+            fileTotalReadings = i;
+            // Total number of lines
+            System.out.println("Total readings : " + i);
+            BufferedReadercsvReader.close();
 
 
         } catch (FileNotFoundException e) {
             System.out.println("The CSV file contains no lines of data" + e.getMessage());
-            }
+
+            //Catch clause for the line variable assignment to the number of lines read by the buffer reader
+            } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        // Initialising the output file names and max patch sizes when the client runs the terminal
+        String newOutputFileName = outputFileName;
+        int newMaxPatchSize = maxPatchSize;
+
+        // Creating a payload for the segment object
+        String segmentPayload = outputFileName + "," + fileTotalReadings + "," + maxPatchSize;
+
+        // Creating a segment object that can later be sent to the server
+        Segment dataSegment = new Segment(0, SegmentType.Meta, segmentPayload, fileTotalReadings);
+
+
+
+
+
 
     }
 
