@@ -5,10 +5,7 @@
  *
  */
 import java.io.*;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketException;
-import java.net.UnknownHostException;
+import java.net.*;
 
 public class Protocol {
 
@@ -62,7 +59,7 @@ public class Protocol {
 	 * This method sends protocol metadata to the server.
 	 * See coursework specification for full details.	
 	 */
-	public void sendMetadata()   {
+	public void sendMetadata() throws IOException {
         BufferedReader BufferedReadercsvReader;
         try {
             BufferedReadercsvReader = new BufferedReader(new FileReader(inputFile));
@@ -71,13 +68,10 @@ public class Protocol {
 
             while ((line = BufferedReadercsvReader.readLine()) != null) {
                 i++;
-                // Data on each line
-                System.out.println(line);
+
             }
 
             fileTotalReadings = i;
-            // Total number of lines
-            System.out.println("Total readings : " + i);
             BufferedReadercsvReader.close();
 
 
@@ -89,18 +83,31 @@ public class Protocol {
             throw new RuntimeException(e);
         }
 
-        // Initialising the output file names and max patch sizes when the client runs the terminal
-        String newOutputFileName = outputFileName;
-        int newMaxPatchSize = maxPatchSize;
-
         // Creating a payload for the segment object
-        String segmentPayload = outputFileName + "," + fileTotalReadings + "," + maxPatchSize;
+        String segmentPayload = fileTotalReadings + "," + outputFileName + "," + maxPatchSize;
 
         // Creating a segment object that can later be sent to the server
         Segment dataSegment = new Segment(0, SegmentType.Meta, segmentPayload, fileTotalReadings);
 
+        //  Sending the segment to the server
+        ByteArrayOutputStream segmentOutputStream = new ByteArrayOutputStream();
+        ObjectOutputStream segmentObjectStream = new ObjectOutputStream(segmentOutputStream);
+
+        //  Write the segment to the byte object - to e sent to the server
+        segmentObjectStream.writeObject(dataSegment);
 
 
+        //  Create byte stream for the segment to be transferred to server
+        byte [] segmentByteStream = segmentOutputStream.toByteArray();
+
+        //  Create data packet and input the segment byte stream as the 'buffer' parameter for the data packet
+        DatagramPacket segmentPacket =  new DatagramPacket(segmentByteStream, segmentByteStream.length, ipAddress, portNumber);
+        socket.send(segmentPacket);
+
+        System.out.println("CLIENT: META [SEQ#" + dataSegment.getSeqNum() + "] (Number of readings:" + fileTotalReadings + ", file name:" + outputFileName + ", patch size:" + maxPatchSize + ")");
+
+        segmentOutputStream.close();
+        segmentObjectStream.close();
 
 
 
