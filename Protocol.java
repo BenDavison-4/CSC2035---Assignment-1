@@ -6,6 +6,8 @@
  */
 import java.io.*;
 import java.net.*;
+import java.util.zip.CRC32;
+import java.util.zip.Checksum;
 
 public class Protocol {
 
@@ -40,6 +42,8 @@ public class Protocol {
 	private int fileTotalReadings;    // number of all readings in the csv file
 	private int sentReadings;         // number of readings successfully sent and acknowledged
 	private int totalSegments;        // total segments that the client sent to the server
+    private BufferedReader csvReader;   //  reader for each reading in the file for all segments (line by line)
+
 
 	// Shared Protocol instance so Client and Server access and operate on the same values for the protocol’s attributes (the above attributes).
 	public static Protocol instance = new Protocol();
@@ -60,55 +64,68 @@ public class Protocol {
 	 * See coursework specification for full details.	
 	 */
 	public void sendMetadata() throws IOException {
-        BufferedReader BufferedReadercsvReader;
+        int totalNumOfReadings = 0;
+//        BufferedReader BufferedReadercsvReader;
         try {
-            BufferedReadercsvReader = new BufferedReader(new FileReader(inputFile));
-            String line;
+            csvReader = new BufferedReader(new FileReader(inputFile));
+//            String line;
             int i = 0;
 
-            while ((line = BufferedReadercsvReader.readLine()) != null) {
-                i++;
+            while ((csvReader.readLine()) != null) {
+                totalNumOfReadings++;
 
             }
 
-            fileTotalReadings = i;
-            BufferedReadercsvReader.close();
+            csvReader.close();
+            csvReader = new BufferedReader(new FileReader(inputFile));
 
 
         } catch (FileNotFoundException e) {
-            System.out.println("The CSV file contains no lines of data" + e.getMessage());
+            System.out.println("The CSV file contains no lines of data/file not located" + e.getMessage());
 
             //Catch clause for the line variable assignment to the number of lines read by the buffer reader
-            } catch (IOException e) {
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
+
+        fileTotalReadings = totalNumOfReadings;
 
         // Creating a payload for the segment object
         String segmentPayload = fileTotalReadings + "," + outputFileName + "," + maxPatchSize;
 
         // Creating a segment object that can later be sent to the server
-        Segment dataSegment = new Segment(0, SegmentType.Meta, segmentPayload, fileTotalReadings);
-
-        //  Sending the segment to the server
-        ByteArrayOutputStream segmentOutputStream = new ByteArrayOutputStream();
-        ObjectOutputStream segmentObjectStream = new ObjectOutputStream(segmentOutputStream);
-
-        //  Write the segment to the byte object - to e sent to the server
-        segmentObjectStream.writeObject(dataSegment);
+        Segment dataSegment = new Segment(0, SegmentType.Meta, segmentPayload, segmentPayload.length());
 
 
-        //  Create byte stream for the segment to be transferred to server
-        byte [] segmentByteStream = segmentOutputStream.toByteArray();
+        try{
+            //  Sending the segment to the server
+            ByteArrayOutputStream segmentOutputStream = new ByteArrayOutputStream();
+            ObjectOutputStream segmentObjectStream = new ObjectOutputStream(segmentOutputStream);
 
-        //  Create data packet and input the segment byte stream as the 'buffer' parameter for the data packet
-        DatagramPacket segmentPacket =  new DatagramPacket(segmentByteStream, segmentByteStream.length, ipAddress, portNumber);
-        socket.send(segmentPacket);
+            //  Write the segment to the byte object - to e sent to the server
+            segmentObjectStream.writeObject(dataSegment);
+            segmentObjectStream.flush();
 
-        System.out.println("CLIENT: META [SEQ#" + dataSegment.getSeqNum() + "] (Number of readings:" + fileTotalReadings + ", file name:" + outputFileName + ", patch size:" + maxPatchSize + ")");
+            //  Create byte stream for the segment to be transferred to server
+            byte[] segmentByteStream = segmentOutputStream.toByteArray();
 
-        segmentOutputStream.close();
-        segmentObjectStream.close();
+            //  Create data packet and input the segment byte stream as the 'buffer' parameter for the data packet
+            DatagramPacket segmentPacket = new DatagramPacket(segmentByteStream, segmentByteStream.length, ipAddress, portNumber);
+            socket.send(segmentPacket);
+            System.out.println("CLIENT: META [SEQ#" + dataSegment.getSeqNum() + "] (Number of readings:" + fileTotalReadings + ", file name:" + outputFileName + ", patch size:" + maxPatchSize + ")");
 
+            segmentOutputStream.close();
+            segmentObjectStream.close();
+
+            //  Creating the new buffer to be used for future segments in the CSV file - used in 'readAndSend()'
+
+
+//            segmentOutputStream.close();
+//            segmentObjectStream.close();
+        } catch (IOException e) {
+            System.out.println("CLIENT: Failed to send segment data to client " + e.getMessage());
+            System.exit(1);
+        }
 
 
     }
@@ -116,19 +133,111 @@ public class Protocol {
 
 
 
-
-
-
-
-	/* 
+        /*
 	 * This method read and send the next data segment (dataSeg) to the server. 
 	 * See coursework specification for full details.
 	 */
-	public void readAndSend() { 
-		System.exit(0);
-	}
+	public void readAndSend() throws IOException {
+        //  Create a new buffer to send data segments for 'readAndSend()'
+        BufferedReader csvReader = new BufferedReader(new FileReader(inputFile));
 
-	/* 
+//        //  Will read the csv file up to a certain number of lines, the same number as the patch size
+//        if (csvReader == null) {
+//            //  File contains no lines - or file reader not created correctly
+//            System.exit(1);
+//        }
+
+        for (int i = 0; i < sentReadings; i++){
+            csvReader.readLine();
+        }
+
+        StringBuilder payloadCreation = new StringBuilder();
+        int countingPatchReadings = 0;
+        String line;
+
+        //  Adding semicolons between each reading - or if there is only one reading display the reading for that line
+        while ((countingPatchReadings < maxPatchSize) && ((line = csvReader.readLine()) != null)) {
+            if (countingPatchReadings > 0) {
+                payloadCreation.append(";");
+            }
+
+            payloadCreation.append(line);
+            countingPatchReadings++;
+        }
+
+        csvReader.close();
+
+        //  Validation check for empty file
+        if (countingPatchReadings == 0) {
+            System.out.println("CLIENT: No patch readings found");
+            return;
+        }
+
+        //  Initialise variables for the payload data
+        String activePayload = payloadCreation.toString();
+        int lengthOfPayload = activePayload.length();
+        int payloadSeqNum = 1; //   CHANGE THIS TO ALTERNATE BETWEEN 1 AND 0
+
+        Segment dataSeg = new Segment(payloadSeqNum, SegmentType.Meta, activePayload, lengthOfPayload);
+
+        //  Sending the segment to the server
+        ByteArrayOutputStream dataSegOutputStream = new ByteArrayOutputStream();
+        ObjectOutputStream dataSegObjectStream = new ObjectOutputStream(dataSegOutputStream);
+
+        //  Write the segment to the byte object - to e sent to the server
+        dataSegObjectStream.writeObject(dataSeg);
+        dataSegObjectStream.flush();
+
+        //  Byte Stream Conversion
+        byte[] dataSegByteStream = dataSegOutputStream.toByteArray();
+
+        //  Packets created for next segments to be sent
+        DatagramPacket dataSegPacket = new DatagramPacket(dataSegByteStream, dataSegByteStream.length, ipAddress, portNumber);
+        socket.send(dataSegPacket);
+
+        //  Assign new values to variables after the packets have been sent as these will be now acknowledged by the server
+        sentReadings += countingPatchReadings;
+        //  Incriment the total segments counter after the segment has been sent to the server in a packet
+        totalSegments++;
+
+        //  Displaying the output statistics of the segment packet
+        System.out.println("CLIENT: META [SEQ#" + dataSeg.getSeqNum() + "] (Number of readings:" + countingPatchReadings + ")");
+
+        dataSegOutputStream.close();
+        dataSegObjectStream.close();
+
+//        for (int i = 0; i < maxPatchSize; i++) {
+//            line = csvReader.readLine();
+//            if (line == null) {
+//                break;
+//            }
+//
+//            if (countingPatchReadings > 0) {
+//                payloadCreation.append(";");
+//            }
+//            payloadCreation.append(line);
+//            countingPatchReadings++;
+//
+//
+//            //  Segment for the readings being read line by line - up until it reaches the given patch size
+//            String activePayload = payloadCreation.toString();
+//            int lengthOfPayload = activePayload.length();
+//
+//            //  Calculate the checksum of each segment created from the output file
+////            Checksum segmentChecksum = Segment.calculateChecksum(activePayload);
+//            Checksum segmentChecksum = activePayload.getChecksum();
+
+
+        }
+
+
+
+
+
+
+
+
+        /*
 	 * This method receives the current Ack segment (ackSeg) from the server 
 	 * See coursework specification for full details.
 	 */
