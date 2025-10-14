@@ -6,6 +6,7 @@
  */
 import java.io.*;
 import java.net.*;
+import java.sql.SQLOutput;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
@@ -178,7 +179,7 @@ public class Protocol {
         int lengthOfPayload = activePayload.length();
         int payloadSeqNum = 1; //   CHANGE THIS TO ALTERNATE BETWEEN 1 AND 0
 
-        Segment dataSeg = new Segment(payloadSeqNum, SegmentType.Meta, activePayload, lengthOfPayload);
+        Segment dataSeg = new Segment(payloadSeqNum, SegmentType.Data, activePayload, lengthOfPayload);
 
         //  Sending the segment to the server
         ByteArrayOutputStream dataSegOutputStream = new ByteArrayOutputStream();
@@ -186,6 +187,7 @@ public class Protocol {
 
         //  Write the segment to the byte object - to e sent to the server
         dataSegObjectStream.writeObject(dataSeg);
+        //  Send the contents of the byte array output stream to the object
         dataSegObjectStream.flush();
 
         //  Byte Stream Conversion
@@ -201,8 +203,7 @@ public class Protocol {
         totalSegments++;
 
         //  Displaying the output statistics of the segment packet
-        System.out.println("CLIENT: META [SEQ#" + dataSeg.getSeqNum() + "] (Number of readings:" + countingPatchReadings + ")");
-
+        System.out.println("CLIENT: Send: DATA [SEQ#" + dataSeg.getSeqNum() + "] (size:" + lengthOfPayload + "crc:" + dataSeg.calculateChecksum() + "content:" + activePayload + ")");
         dataSegOutputStream.close();
         dataSegObjectStream.close();
 
@@ -242,8 +243,52 @@ public class Protocol {
 	 * See coursework specification for full details.
 	 */
 	public boolean receiveAck() { 
-		System.exit(0);
-		return false;
+        //  Create a new buffer for the ACK segment data packet
+        byte[] ackBuffer = new byte[MAX_Segment_SIZE];  //  'MAX_SEGMENT_SIZE' is used to account for every segment sent - so the buffer won't exceed memory during runtime
+        //  Packet being created for the ACK segment to be received by the server.
+        DatagramPacket ackPacket = new DatagramPacket(ackBuffer, ackBuffer.length);
+
+        //  Try statement created to check if the server will receive the packet or not.
+        try {
+            //  'socket' has already been established containing the IP and Port number of the server machine - so the ACK packet can simply be requested to be received by the server.
+            socket.receive(ackPacket);
+
+            //  Converting the ACK packet into a byte stream so it can be sent through within the segment to be received by the server.
+            ByteArrayInputStream ackInputStream = new ByteArrayInputStream(ackBuffer);
+            ObjectInputStream ackObjectStream = new ObjectInputStream(ackInputStream);
+
+            //  Creating the ACK segment (using code almost identical to the 'Server' java file).
+            try {
+                //  Testing if the raw data of the buffer can be compiled into a segment.
+                ackSeg = (Segment) ackObjectStream.readObject();
+            } catch (ClassNotFoundException e) {
+                System.out.println("CLIENT: Failed to read ack segment from client " + e.getMessage());
+            }
+
+            //  Checking if the type of the segment that has just been created is of the same 'Ack' type specified in the segment 'enum' datatype.
+            if (ackSeg.getType() == SegmentType.Ack) {
+                System.out.println("CLIENT: RECIEVE: ACK[SEQ#" + ackSeg.getSeqNum() + "]");
+                ackInputStream.close();
+                ackObjectStream.close();
+                return true;
+
+            }   else {
+                //  (if the types of the segments don't match)
+                System.out.println("CLIENT: Failed to create ACK segment of type 'Ack'");
+                return false;
+            }
+
+
+
+
+
+            //  Checking if the sequence number of the newly initialised ACK segment is the same as the Data segment that has just been sent.
+
+
+        } catch (IOException e) {
+            System.out.println("CLIENT: Failed to receive ack packet " + e.getMessage());
+        }
+        return false;
 	}
 
 	/* 
