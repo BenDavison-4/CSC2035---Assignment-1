@@ -7,6 +7,8 @@
 import java.io.*;
 import java.net.*;
 import java.sql.SQLOutput;
+//  (AtomicInteger imported to make the alternating sequence number a less complicated soluton to use throught different subroutines
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
@@ -43,7 +45,6 @@ public class Protocol {
 	private int fileTotalReadings;    // number of all readings in the csv file
 	private int sentReadings;         // number of readings successfully sent and acknowledged
 	private int totalSegments;        // total segments that the client sent to the server
-    private BufferedReader csvReader;   //  reader for each reading in the file for all segments (line by line)
 
 
 	// Shared Protocol instance so Client and Server access and operate on the same values for the protocol’s attributes (the above attributes).
@@ -65,6 +66,7 @@ public class Protocol {
 	 * See coursework specification for full details.	
 	 */
 	public void sendMetadata() throws IOException {
+        BufferedReader csvReader = null;
         int totalNumOfReadings = 0;
 //        BufferedReader BufferedReadercsvReader;
         try {
@@ -95,7 +97,7 @@ public class Protocol {
         String segmentPayload = fileTotalReadings + "," + outputFileName + "," + maxPatchSize;
 
         // Creating a segment object that can later be sent to the server
-        Segment dataSegment = new Segment(0, SegmentType.Meta, segmentPayload, segmentPayload.length());
+        Segment dataSeg = new Segment(0, SegmentType.Meta, segmentPayload, segmentPayload.length());
 
 
         try{
@@ -104,7 +106,7 @@ public class Protocol {
             ObjectOutputStream segmentObjectStream = new ObjectOutputStream(segmentOutputStream);
 
             //  Write the segment to the byte object - to e sent to the server
-            segmentObjectStream.writeObject(dataSegment);
+            segmentObjectStream.writeObject(dataSeg);
             segmentObjectStream.flush();
 
             //  Create byte stream for the segment to be transferred to server
@@ -113,7 +115,7 @@ public class Protocol {
             //  Create data packet and input the segment byte stream as the 'buffer' parameter for the data packet
             DatagramPacket segmentPacket = new DatagramPacket(segmentByteStream, segmentByteStream.length, ipAddress, portNumber);
             socket.send(segmentPacket);
-            System.out.println("CLIENT: META [SEQ#" + dataSegment.getSeqNum() + "] (Number of readings:" + fileTotalReadings + ", file name:" + outputFileName + ", patch size:" + maxPatchSize + ")");
+            System.out.println("CLIENT: META [SEQ#" + dataSeg.getSeqNum() + "] (Number of readings:" + fileTotalReadings + ", file name:" + outputFileName + ", patch size:" + maxPatchSize + ")");
 
             segmentOutputStream.close();
             segmentObjectStream.close();
@@ -177,8 +179,9 @@ public class Protocol {
         //  Initialise variables for the payload data
         String activePayload = payloadCreation.toString();
         int lengthOfPayload = activePayload.length();
-        int payloadSeqNum = 1; //   CHANGE THIS TO ALTERNATE BETWEEN 1 AND 0
+//        int payloadSeqNum = activeSeqNum.getAndSet(activeSeqNum.get() == 0 ? 1: 0); //  Information on how to use the external module 'AtomicInteger' and how to use the '?' symbol instead of an if-else was found here: https://www.reddit.com/r/javahelp/comments/4n6g4z/what_is_a_question_mark_and_colon_operator_used/#:~:text=It's%20called%20the%20ternary%20operator,a%20shorthand%20if%2Delse%20statement.&text=Basically%20means%2C%20%22if%20condition%20is,the%20trueValue%2C%20else%20use%20falseValue.
 
+        int payloadSeqNum = (sentReadings / maxPatchSize) % 2;
         Segment dataSeg = new Segment(payloadSeqNum, SegmentType.Data, activePayload, lengthOfPayload);
 
         //  Sending the segment to the server
