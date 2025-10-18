@@ -164,7 +164,25 @@ public class Protocol {
                 payloadCreation.append(";");
             }
 
-            payloadCreation.append(line);
+			//	#FORMATING CSV FILE
+			//	Separating the csv file into its individual values (splitting the line after each 'readLine' is executed)
+			String[] individualCSV = line.split(",");
+
+			//	Initialising the columns with their own variables
+			String sensorID = individualCSV[0];
+			long timeStamp = Long.parseLong(individualCSV[1]);	//	timeStamp won't work as an int - value to small - has to be cast the string of arrays to a 'long' datatype tomaccomodate the timestamp.
+
+			//	Initialising the float array for the set of 3 float values:
+			float[] floatValues = new float[3];
+			//	Setting the values at indexes; 2, 3 and 4, to be the first three index positions of the new array
+			floatValues[0] = Float.parseFloat(individualCSV[2].trim());
+			floatValues[1] = Float.parseFloat(individualCSV[3].trim());
+			floatValues[2] = Float.parseFloat(individualCSV[4].trim());
+
+			//	Creating a 'Reading' object with the new values that have been created:
+			Reading formatReading = new Reading(sensorID, timeStamp, floatValues);
+			//	Append the reading toString to the segment payload string:
+            payloadCreation.append(formatReading.toString());
             countingPatchReadings++;
         }
 
@@ -174,7 +192,7 @@ public class Protocol {
         if (countingPatchReadings == 0) {
 			//	All readings have been collated into segments - the total segments should be displayed at the end of the Client terminal.
 			System.out.println("Total segments: " + totalSegments);
-            return;
+            System.exit(0);
         }
 
         //  Initialise variables for the payload data
