@@ -66,13 +66,11 @@ public class Protocol {
 	 * See coursework specification for full details.	
 	 */
 	public void sendMetadata() throws IOException {
-        BufferedReader csvReader = null;
+        BufferedReader csvReader;
         int totalNumOfReadings = 0;
-//        BufferedReader BufferedReadercsvReader;
+
         try {
             csvReader = new BufferedReader(new FileReader(inputFile));
-//            String line;
-            int i = 0;
 
             while ((csvReader.readLine()) != null) {
                 totalNumOfReadings++;
@@ -80,7 +78,6 @@ public class Protocol {
             }
 
             csvReader.close();
-            csvReader = new BufferedReader(new FileReader(inputFile));
 
 
         } catch (FileNotFoundException e) {
@@ -120,11 +117,6 @@ public class Protocol {
             segmentOutputStream.close();
             segmentObjectStream.close();
 
-            //  Creating the new buffer to be used for future segments in the CSV file - used in 'readAndSend()'
-
-
-//            segmentOutputStream.close();
-//            segmentObjectStream.close();
         } catch (IOException e) {
             System.out.println("CLIENT: Failed to send segment data to client " + e.getMessage());
             System.exit(1);
@@ -144,12 +136,6 @@ public class Protocol {
         //  Create a new buffer to send data segments for 'readAndSend()'
         BufferedReader csvReader = new BufferedReader(new FileReader(inputFile));
 
-//        //  Will read the csv file up to a certain number of lines, the same number as the patch size
-//        if (csvReader == null) {
-//            //  File contains no lines - or file reader not created correctly
-//            System.exit(1);
-//        }
-
         for (int i = 0; i < sentReadings; i++){
             csvReader.readLine();
         }
@@ -168,16 +154,16 @@ public class Protocol {
 			//	Separating the csv file into its individual values (splitting the line after each 'readLine' is executed)
 			String[] individualCSV = line.split(",");
 
-			//	Initialising the columns with their own variables
-			String sensorID = individualCSV[0];
-			long timeStamp = Long.parseLong(individualCSV[1]);	//	timeStamp won't work as an int - value to small - has to be cast the string of arrays to a 'long' datatype tomaccomodate the timestamp.
-
 			//	Initialising the float array for the set of 3 float values:
 			float[] floatValues = new float[3];
 			//	Setting the values at indexes; 2, 3 and 4, to be the first three index positions of the new array
 			floatValues[0] = Float.parseFloat(individualCSV[2].trim());
 			floatValues[1] = Float.parseFloat(individualCSV[3].trim());
 			floatValues[2] = Float.parseFloat(individualCSV[4].trim());
+
+			//	Initialising the columns with their own variables
+			String sensorID = individualCSV[0];
+			long timeStamp = Long.parseLong(individualCSV[1]);	//	timeStamp won't work as an int - value to small - has to be cast the string of arrays to a 'long' datatype tomaccomodate the timestamp.
 
 			//	Creating a 'Reading' object with the new values that have been created:
 			Reading formatReading = new Reading(sensorID, timeStamp, floatValues);
@@ -223,7 +209,7 @@ public class Protocol {
 
         //  Assign new values to variables after the packets have been sent as these will be now acknowledged by the server
         sentReadings += countingPatchReadings;
-        //  Incriment the total segments counter after the segment has been sent to the server in a packet
+        //  Increment the total segments counter after the segment has been sent to the server in a packet
         totalSegments++;
 
         //  Displaying the output statistics of the segment packet
@@ -231,50 +217,21 @@ public class Protocol {
         dataSegOutputStream.close();
         dataSegObjectStream.close();
 
-//        for (int i = 0; i < maxPatchSize; i++) {
-//            line = csvReader.readLine();
-//            if (line == null) {
-//                break;
-//            }
-//
-//            if (countingPatchReadings > 0) {
-//                payloadCreation.append(";");
-//            }
-//            payloadCreation.append(line);
-//            countingPatchReadings++;
-//
-//
-//            //  Segment for the readings being read line by line - up until it reaches the given patch size
-//            String activePayload = payloadCreation.toString();
-//            int lengthOfPayload = activePayload.length();
-//
-//            //  Calculate the checksum of each segment created from the output file
-////            Checksum segmentChecksum = Segment.calculateChecksum(activePayload);
-//            Checksum segmentChecksum = activePayload.getChecksum();
-
-
         }
-
-
-
-
-
-
-
 
         /*
 	 * This method receives the current Ack segment (ackSeg) from the server 
 	 * See coursework specification for full details.
 	 */
 	public boolean receiveAck() { 
-        //  Create a new buffer for the ACK segment data packet
+        //  Create a new buffer for the ACK data packet
         byte[] ackBuffer = new byte[MAX_Segment_SIZE];  //  'MAX_SEGMENT_SIZE' is used to account for every segment sent - so the buffer won't exceed memory during runtime
-        //  Packet being created for the ACK segment to be received by the server.
+        //  Packet being created for the ACK segment to be received by the client from the server.
         DatagramPacket ackPacket = new DatagramPacket(ackBuffer, ackBuffer.length);
 
-        //  Try statement created to check if the server will receive the packet or not.
+        //  Try statement created to check if the client will receive the packet from the server
         try {
-            //  'socket' has already been established containing the IP and Port number of the server machine - so the ACK packet can simply be requested to be received by the server.
+            //	The packet is established and requests to be received on the client-side via the server - this will confirm the connection between server and client.
             socket.receive(ackPacket);
 
             //  Converting the ACK packet into a byte stream so it can be sent through within the segment to be received by the server.
@@ -283,8 +240,8 @@ public class Protocol {
 
             //  Creating the ACK segment (using code almost identical to the 'Server' java file).
             try {
-                //  Testing if the raw data of the buffer can be compiled into a segment.
-                ackSeg = (Segment) ackObjectStream.readObject();
+                //  Testing if the raw data of the (object) buffer can be compiled and created into a segment data type.
+                ackSeg = (Segment) ackObjectStream.readObject();	//	Creates segment object using the data transferred from the segment object set up in 'Server'.
             } catch (ClassNotFoundException e) {
                 System.out.println("CLIENT: Failed to read ack segment from client " + e.getMessage());
             }
@@ -299,20 +256,11 @@ public class Protocol {
 					return true;
 				}
 
-
-
             }   else {
                 //  (if the types of the segments don't match)
                 System.out.println("CLIENT: Failed to create ACK segment of type 'Ack'");
                 return false;
             }
-
-
-
-
-
-            //  Checking if the sequence number of the newly initialised ACK segment is the same as the Data segment that has just been sent.
-
 
         } catch (IOException e) {
             System.out.println("CLIENT: Failed to receive ack packet " + e.getMessage());
@@ -324,9 +272,62 @@ public class Protocol {
 	 * This method starts a timer and does re-transmission of the Data segment 
 	 * See coursework specification for full details.
 	 */
-	public void startTimeoutWithRetransmission()   {  
+	public void startTimeoutWithRetransmission() throws IOException {
+		try {
+			socket.setSoTimeout(timeout);
+		} catch (SocketException e) {
+			System.out.println("CLIENT: Unable to apply a socket timeout: " + e.getMessage());
+			System.exit(1);
+        }
+		//	After the last Ack loss, this loop will continue loop around until either a valid Ack seg has been located, or the max number of retries has been hit.
+		//	This loop will almost always be true (depending on the probability)
+		while (currRetry < maxRetries){
+			try {
+				if (receiveAck()){	//	If 'receiveAck' is true, then the client received the same segment as the server / a valid Ack segment has been produced.
+					currRetry = 0;	//	Lost Ack retry counter is reset after a valid ack segment has passed.
+					break;
+			}
 
-	}
+			} catch (Exception e) {
+				//	If no Ack segment is received, and the 'receive()' method for the socket times out -
+				//	the Lost Ack counter is incremented by one, as well as the totalSegments value (as per the spec - each time a segment is transferred this value must be adjusted).
+				currRetry++;
+				totalSegments++;
+
+				//	Re-transmitting the lost segment
+				System.out.println("CLIENT: Socket Timeout - ACK[SEQ#" + dataSeg.getSeqNum() + "has been lost");
+
+				//	Segment data already read from the input streams in 'receiveAck' - so output streams must be used to write the segment data to the object stream to transfer over a network.
+				ByteArrayOutputStream lostSegOutputStream = new ByteArrayOutputStream();
+				ObjectOutputStream lostSegObjectStream = new ObjectOutputStream(lostSegOutputStream);
+
+				//	Write the contents of the dataSeg to the object stream
+				lostSegObjectStream.writeObject(dataSeg);
+				lostSegObjectStream.flush();
+
+				//	Create a byte stream as a buffer for the lost Ack segments packet
+				byte[] lostSegByteStream = lostSegOutputStream.toByteArray();
+
+				//	Lost segment packet creation:
+				DatagramPacket lostSegPacket = new DatagramPacket(lostSegByteStream, lostSegByteStream.length, ipAddress, portNumber);
+
+				//	Re-send the packet back to the server
+				socket.send(lostSegPacket);
+
+				lostSegOutputStream.close();
+				lostSegObjectStream.close();
+            }
+        }
+
+		//	If the number of retires for the client is less than the number of retries of a lost Ack segment,
+		//	the client must terminate as the maximum number of retries to resend a singular segment has been exceeded.
+		if (maxRetries <= currRetry){
+			System.out.println("CLIENT: Maximum number of retries permitted for this retransmission - Socket --> Timeout");
+			System.out.println("CLIENT: Closed");
+			//	Abnormal termination - program can't continue if the max value is exceeded
+			System.exit(1);
+		}
+    }
 
 
 	/* 
