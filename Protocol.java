@@ -170,19 +170,22 @@ public class Protocol {
 
         csvReader.close();
 
-        //  Validation check for empty file
+        //  Validation check for empty file (after all readings have been accounted for)
         if (countingPatchReadings == 0) {
-            System.out.println("CLIENT: No patch readings found");
+			//	All readings have been collated into segments - the total segments should be displayed at the end of the Client terminal.
+			System.out.println("Total segments: " + totalSegments);
             return;
         }
 
         //  Initialise variables for the payload data
         String activePayload = payloadCreation.toString();
         int lengthOfPayload = activePayload.length();
-//        int payloadSeqNum = activeSeqNum.getAndSet(activeSeqNum.get() == 0 ? 1: 0); //  Information on how to use the external module 'AtomicInteger' and how to use the '?' symbol instead of an if-else was found here: https://www.reddit.com/r/javahelp/comments/4n6g4z/what_is_a_question_mark_and_colon_operator_used/#:~:text=It's%20called%20the%20ternary%20operator,a%20shorthand%20if%2Delse%20statement.&text=Basically%20means%2C%20%22if%20condition%20is,the%20trueValue%2C%20else%20use%20falseValue.
 
-        int payloadSeqNum = (sentReadings / maxPatchSize) % 2;
-        Segment dataSeg = new Segment(payloadSeqNum, SegmentType.Data, activePayload, lengthOfPayload);
+		//	Adding 1 to the total segments (which will initially be 0) will increase the value of total segments to 1,
+		//	MOD 2 leaves the remainder as 1 for the first sequence number, this will display the SEQ# format to start at
+		//	1 for the actual readings, in compliance with the model output in the specification.
+        int payloadSeqNum = ((totalSegments + 1) % 2);
+        dataSeg = new Segment(payloadSeqNum, SegmentType.Data, activePayload, lengthOfPayload);
 
         //  Sending the segment to the server
         ByteArrayOutputStream dataSegOutputStream = new ByteArrayOutputStream();
@@ -270,10 +273,15 @@ public class Protocol {
 
             //  Checking if the type of the segment that has just been created is of the same 'Ack' type specified in the segment 'enum' datatype.
             if (ackSeg.getType() == SegmentType.Ack) {
-                System.out.println("CLIENT: RECIEVE: ACK[SEQ#" + ackSeg.getSeqNum() + "]");
-                ackInputStream.close();
-                ackObjectStream.close();
-                return true;
+				if (ackSeg.getSeqNum() == dataSeg.getSeqNum()){
+					System.out.println("CLIENT: RECEIVE: ACK[SEQ#" + ackSeg.getSeqNum() + "]");
+					System.out.println("------------------------------------------------------------------");
+					ackInputStream.close();
+					ackObjectStream.close();
+					return true;
+				}
+
+
 
             }   else {
                 //  (if the types of the segments don't match)
