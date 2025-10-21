@@ -345,7 +345,6 @@ public class Protocol {
         //  Creating a list to store duplicate segment readings to remove from the final list made by the server
         List<String> tempReadings = new ArrayList<>();
 
-        int seqNumOutcome = 1;
         int lastKnownAckSeqNum = 0;
         int byteTotal = 0;
         int usefulByteTotal = 0;
@@ -372,42 +371,54 @@ public class Protocol {
             System.out.println("SERVER: Receive: DATA [SEQ#" + serverDataSeg.getSeqNum() + "](" + "size:" + serverDataSeg.getSize() + ", crc: " + serverDataSeg.getChecksum() +
                     ", content:" + serverDataSeg.getPayLoad() + ")");
 
+            int payloadSeqNum = ((totalSegments + 1) % 2);
+
             // calculate the checksum
             long x = serverDataSeg.calculateChecksum();
 
             // if the calculated checksum is same as that of received checksum then send the corresponding ack
             if (serverDataSeg.getType() == SegmentType.Data && x == serverDataSeg.getChecksum()) {
-                if (serverDataSeg.getSeqNum() == dataSeg.getSeqNum()) {
-                    System.out.println("SERVER: Calculated checksum is " + x + "  VALID");
-                    tempReadings.add(serverDataSeg.getPayLoad());
+                System.out.println("SERVER: Calculated checksum is " + x + "  VALID");
 
-                    //update the number of correctly received readings
-                    readingCount++;
+                //  Retrieve the total number of bytes used in transferring the segment over the network
+                byteTotal += serverDataSeg.getSize();
+                //  Append the payload of the segment to the temporary list - but don't add duplicates.
+                tempReadings.add(serverDataSeg.getPayLoad());
+
+                //update the number of correctly received readings
+                readingCount++;
+                totalSegments++;
+
+                if (serverDataSeg.getSeqNum() == payloadSeqNum) {
+
+                    tempReadings.add(serverDataSeg.getPayLoad());
+                    usefulByteTotal += serverDataSeg.getSize();
 
                     //  Ack loss simulation
                     if (isLost((loss))) {
-                        System.out.println("SERVER: Ack loss simulation - ACK{SEQ#" + seqNumOutcome + "} has been lost");
+                        System.out.println("SERVER: Simulating ACK loss - ACK{SEQ#" + serverDataSeg.getSeqNum() + "} is lost");
                     } else {
                         //  If the Ack segment isn't lost in the simulation, the server will resend the Ack
                         Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), serverDataSeg.getSeqNum());
+                        //  Alternates the sequence number for future lost Acks (changes the seq num from 1-->0, 0-->1)
                     }
 
-                    //  Alternates the sequence number for future lost Acks (changes the seq num from 1-->0, 0-->1)
-                    seqNumOutcome = seqNumOutcome - 1;
+
                 } else {
                     //  Duplicate data segment:
                     System.out.println("SERVER: Duplicate data located - resending previous ACK");
 
                     if (isLost((loss))) {
-                        System.out.println("SERVER: Ack loss simulation - ACK{SEQ#" + (1 - seqNumOutcome) + "} has been lost");
+                        System.out.println("SERVER: Ack loss simulation - ACK{SEQ#" + (serverDataSeg.getSeqNum()) + "} is lost");
                     } else {
-                        Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), (1 - seqNumOutcome));
+                        Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), (serverDataSeg.getSeqNum()));
+                        //  Alternates the sequence number for future lost Acks (changes the seq num from 1-->0, 0-->1)
                     }
                 }
             }
 
             double ackEfficiency = ((double) usefulByteTotal / totalSegments) * 100;
-            System.out.println("Efficiency: " + ackEfficiency + "%");
+           // System.out.println("Efficiency: " + ackEfficiency + "%");
 
 
 
