@@ -415,14 +415,23 @@ public class Protocol {
                         //  Alternates the sequence number for future lost Acks (changes the seq num from 1-->0, 0-->1)
                     }
                 }
+
+                //if all readings are received, then write the readings to the file
             }
 
-            double ackEfficiency = ((double) usefulByteTotal / totalSegments) * 100;
-           // System.out.println("Efficiency: " + ackEfficiency + "%");
-
-
+//            if (Protocol.instance.getOutputFileName() != null && readingCount >= Protocol.instance.getFileTotalReadings()) {
+//                Server.writeReadingsToFile(tempReadings, Protocol.instance.getOutputFileName());
+//                break;
+//            }
+//
+//            System.out.println("Total bytes: " + byteTotal);
+//            System.out.println("Useful bytes: " + usefulByteTotal);
+//
+//            double ackEfficiency = ((double) usefulByteTotal / byteTotal) * 100;
+//            System.out.println("Efficiency: " + ackEfficiency + "%");
 
             }
+
     }
 
 
