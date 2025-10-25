@@ -6,14 +6,9 @@
  */
 import java.io.*;
 import java.net.*;
-import java.sql.SQLOutput;
 //  (AtomicInteger imported to make the alternating sequence number a less complicated soluton to use throught different subroutines
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.zip.CRC32;
-import java.util.zip.Checksum;
 
 public class Protocol {
 
@@ -339,98 +334,126 @@ public class Protocol {
             throw new RuntimeException(e);
         }
 
-        //  Variable Initialisation
+        //  #Variable Initialisation
         byte[] buf = new byte[Protocol.MAX_Segment_SIZE];
 
         //  Creating a list to store duplicate segment readings to remove from the final list made by the server
         List<String> tempReadings = new ArrayList<>();
 
-        int lastKnownAckSeqNum = 0;
-        int byteTotal = 0;
-        int usefulByteTotal = 0;
+        int previousSeqNum = 0; //  Last sent Ack
+        int futureSeqNum = 1;   //  Ack to be sent next
+        int totalBytes = 0; //  Total num of bytes used to transfer the segments
+        int usefulTotalBytes = 0;   //  Num of bytes used to successfully deliver a valid segment (Ack is received)
 
         //  CODE FROM 'SERVER' - START
         int readingCount= 0;
 
-        // while still receiving Data segments
-        while (true) {
-            DatagramPacket incomingPacket = new DatagramPacket(buf, buf.length);
-            serverSocket.receive(incomingPacket);// receive from the client
+        try {
+            while (true) {
+                DatagramPacket incomingPacket = new DatagramPacket(buf, buf.length);
+                serverSocket.receive(incomingPacket);// receive from the client
 
-            Segment serverDataSeg = new Segment();
-            byte[] data = incomingPacket.getData();
-            ByteArrayInputStream in = new ByteArrayInputStream(data);
-            ObjectInputStream is = new ObjectInputStream(in);
+                Segment serverDataSeg = new Segment();
+                byte[] data = incomingPacket.getData();
+                ByteArrayInputStream in = new ByteArrayInputStream(data);
+                ObjectInputStream is = new ObjectInputStream(in);
 
-            // read and then print the content of the segment
-            try {
-                serverDataSeg = (Segment) is.readObject();
-            } catch (ClassNotFoundException e) {
-                e.printStackTrace();
-            }
-            System.out.println("SERVER: Receive: DATA [SEQ#" + serverDataSeg.getSeqNum() + "](" + "size:" + serverDataSeg.getSize() + ", crc: " + serverDataSeg.getChecksum() +
-                    ", content:" + serverDataSeg.getPayLoad() + ")");
+                // read and then print the content of the segment
+                try {
+                    serverDataSeg = (Segment) is.readObject();
+                } catch (ClassNotFoundException e) {
+                    e.printStackTrace();
+                }
+                System.out.println("SERVER: Receive: DATA [SEQ#" + serverDataSeg.getSeqNum() + "](" + "size:" + serverDataSeg.getSize() + ", crc: " + serverDataSeg.getChecksum() +
+                        ", content:" + serverDataSeg.getPayLoad() + ")");
 
-            int payloadSeqNum = ((totalSegments + 1) % 2);
+                int payloadSeqNum = ((totalSegments + 1) % 2);
 
-            // calculate the checksum
-            long x = serverDataSeg.calculateChecksum();
+                // calculate the checksum
+                long x = serverDataSeg.calculateChecksum();
 
-            // if the calculated checksum is same as that of received checksum then send the corresponding ack
-            if (serverDataSeg.getType() == SegmentType.Data && x == serverDataSeg.getChecksum()) {
-                System.out.println("SERVER: Calculated checksum is " + x + "  VALID");
+                // if the calculated checksum is same as that of received checksum then send the corresponding ack
+                if (serverDataSeg.getType() == SegmentType.Data && x == serverDataSeg.getChecksum()) {
+//                    System.out.println("SERVER: Calculated checksum is " + x + "  VALID");
 
-                //  Retrieve the total number of bytes used in transferring the segment over the network
-                byteTotal += serverDataSeg.getSize();
-                //  Append the payload of the segment to the temporary list - but don't add duplicates.
-                tempReadings.add(serverDataSeg.getPayLoad());
+                    //  Retrieve the total number of bytes used in transferring the segment(s) over the network
+                    totalBytes += serverDataSeg.getSize();
 
-                //update the number of correctly received readings
-                readingCount++;
-                totalSegments++;
 
-                if (serverDataSeg.getSeqNum() == payloadSeqNum) {
 
-                    tempReadings.add(serverDataSeg.getPayLoad());
-                    usefulByteTotal += serverDataSeg.getSize();
+                    if (serverDataSeg.getSeqNum() == previousSeqNum) {
 
-                    //  Ack loss simulation
-                    if (isLost((loss))) {
-                        System.out.println("SERVER: Simulating ACK loss - ACK{SEQ#" + serverDataSeg.getSeqNum() + "} is lost");
+                        System.out.println("SERVER: Duplicate DATA is detected");
+                        System.out.println("SERVER: Sending an Ack of the previous segment");
+
+                        //  Alternates the sequence numbers for the next segment to be received / re-sent
+                        previousSeqNum = previousSeqNum + 1;
+
+
+
+                        //  Ack loss simulation
+                        if (isLost((loss))) {
+                            System.out.println("SERVER: Simulating ACK loss - ACK{SEQ#" + previousSeqNum + "} is lost");
+                        } else {
+                            //  If the Ack segment isn't lost in the simulation, the server will resend the Ack
+                            Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), previousSeqNum);
+//                        System.out.println("SERVER: Send: ACK [SEQ#" + previousSeqNum + "]");
+//                        System.out.println("\t\t>>>>>>> NETWORK: ACK is sent successfully <<<<<<<<<"  );
+                            //  Alternates the sequence number for future lost Acks (changes the seq num from 1-->0, 0-->1)
+                        }
+
+
                     } else {
-                        //  If the Ack segment isn't lost in the simulation, the server will resend the Ack
-                        Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), serverDataSeg.getSeqNum());
-                        //  Alternates the sequence number for future lost Acks (changes the seq num from 1-->0, 0-->1)
+
+                        //  Selection statement created to only append the payload of the data seg to the list if it
+                        //  doesn't contain a reading for that segment already - if it is already in the list,
+                        //  the previousSeqNum is set to the current segments Seq num:
+                        if (!tempReadings.contains(serverDataSeg.getPayLoad())){
+                            tempReadings.add(serverDataSeg.getPayLoad());   //  Append the payload of the segment to the temporary list - but doesn't add duplicates that fail to be received by the client.
+                            usefulTotalBytes += serverDataSeg.getSize();
+                            readingCount++;
+                        }
+
+                        previousSeqNum = serverDataSeg.getSeqNum();
+
+
+                        if (isLost((loss))) {
+                            System.out.println("SERVER: Simulating ACK loss. ACK[SEQ#" + serverDataSeg.getSeqNum() + "] is lost.");
+                        } else {
+                            Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), serverDataSeg.getSeqNum());
+//                        System.out.println("SERVER: Send: ACK [SEQ#" + serverDataSeg.getSeqNum() + "]");
+//                        System.out.println("\t\t>>>>>>> NETWORK: ACK is sent successfully <<<<<<<<<"  );
+                            //  Alternates the sequence number for future lost Acks (changes the seq num from 1-->0, 0-->1)
+                        }
                     }
 
-
-                } else {
-                    //  Duplicate data segment:
-                    System.out.println("SERVER: Duplicate data located - resending previous ACK");
-
-                    if (isLost((loss))) {
-                        System.out.println("SERVER: Ack loss simulation - ACK{SEQ#" + (serverDataSeg.getSeqNum()) + "} is lost");
-                    } else {
-                        Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), (serverDataSeg.getSeqNum()));
-                        //  Alternates the sequence number for future lost Acks (changes the seq num from 1-->0, 0-->1)
-                    }
                 }
 
                 //if all readings are received, then write the readings to the file
-            }
 
-//            if (Protocol.instance.getOutputFileName() != null && readingCount >= Protocol.instance.getFileTotalReadings()) {
-//                Server.writeReadingsToFile(tempReadings, Protocol.instance.getOutputFileName());
-//                break;
-//            }
-//
-//            System.out.println("Total bytes: " + byteTotal);
-//            System.out.println("Useful bytes: " + usefulByteTotal);
-//
-//            double ackEfficiency = ((double) usefulByteTotal / byteTotal) * 100;
-//            System.out.println("Efficiency: " + ackEfficiency + "%");
+                if (readingCount > fileTotalReadings) {
+                    Server.writeReadingsToFile(tempReadings, Protocol.instance.getOutputFileName());
+                    break;
+                }
+
 
             }
+
+        } catch (SocketTimeoutException e) {
+            System.out.println("SERVER: Timeout");
+            if (tempReadings.isEmpty()){
+                Server.writeReadingsToFile(tempReadings, Protocol.instance.getOutputFileName());
+            }
+        }
+
+        System.out.println("------------------------------------------------" );
+        System.out.println("Total bytes: " + totalBytes);
+        System.out.println("Useful bytes: " + usefulTotalBytes);
+
+        double ackEfficiency = ((double) usefulTotalBytes / totalBytes) * 100;
+        System.out.println("Efficiency: " + ackEfficiency + "%");
+        System.out.println("------------------------------------------------" );
+        System.out.println(tempReadings);
 
     }
 
