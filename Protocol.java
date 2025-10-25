@@ -397,52 +397,59 @@ public class Protocol {
                         } else {
                             //  If the Ack segment isn't lost in the simulation, the server will resend the Ack
                             Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), previousSeqNum);
-//                        System.out.println("SERVER: Send: ACK [SEQ#" + previousSeqNum + "]");
-//                        System.out.println("\t\t>>>>>>> NETWORK: ACK is sent successfully <<<<<<<<<"  );
-                            //  Alternates the sequence number for future lost Acks (changes the seq num from 1-->0, 0-->1)
+
                         }
 
 
                     } else {
 
-                        //  Selection statement created to only append the payload of the data seg to the list if it
-                        //  doesn't contain a reading for that segment already - if it is already in the list,
-                        //  the previousSeqNum is set to the current segments Seq num:
-                        if (!tempReadings.contains(serverDataSeg.getPayLoad())){
-                            tempReadings.add(serverDataSeg.getPayLoad());   //  Append the payload of the segment to the temporary list - but doesn't add duplicates that fail to be received by the client.
-                            usefulTotalBytes += serverDataSeg.getSize();
-                            readingCount++;
-                        }
-
-                        previousSeqNum = serverDataSeg.getSeqNum();
-
+                        //  Will only write the readings to the file from the temp list IF the Ack isn't lost -
+                        //  this is important so I don't prematurely write the segment to the file if it needs to be resent
+                        //  - this can cause errors as it could end up being written as a row in the file without actually
+                        //  being received by the client - this way I ensure segments are only written to the file IF the Ack is valid (can be received):
 
                         if (isLost((loss))) {
                             System.out.println("SERVER: Simulating ACK loss. ACK[SEQ#" + serverDataSeg.getSeqNum() + "] is lost.");
                         } else {
+
+                            //  Selection statement created to only append the payload of the data seg to the list if it
+                            //  doesn't contain a reading for that segment already - if the segment has already been written to the list,
+                            //  the duplicate won't be added so that the list will only contain ONE instance of each segment
+                            //  - then the Ack can be securely sent back to the client to be received:
+
+                            if (!tempReadings.contains(serverDataSeg.getPayLoad())){
+                                tempReadings.add(serverDataSeg.getPayLoad());   //  Append the payload of the segment to the temporary list - but doesn't add duplicates that fail to be received by the client.
+                                usefulTotalBytes += serverDataSeg.getSize();
+                                readingCount++;
+                            }
+
+
                             Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), serverDataSeg.getSeqNum());
-//                        System.out.println("SERVER: Send: ACK [SEQ#" + serverDataSeg.getSeqNum() + "]");
-//                        System.out.println("\t\t>>>>>>> NETWORK: ACK is sent successfully <<<<<<<<<"  );
-                            //  Alternates the sequence number for future lost Acks (changes the seq num from 1-->0, 0-->1)
+
                         }
                     }
 
                 }
 
-                //if all readings are received, then write the readings to the file
-
-                if (readingCount > fileTotalReadings) {
+                //  if ALL readings are received, then write the readings to the file with successful readings
+                if (readingCount >= fileTotalReadings) {
                     Server.writeReadingsToFile(tempReadings, Protocol.instance.getOutputFileName());
                     break;
                 }
-
-
             }
 
         } catch (SocketTimeoutException e) {
             System.out.println("SERVER: Timeout");
-            if (tempReadings.isEmpty()){
+            //  If the socket times out before all readings can be received, the current segments in the list are written to the output.txt file
+            //  - as long as the list has segment data in it, and as long as not all expected payloads have been received
+            //  , it will be written to the file (partial):
+
+            if (!tempReadings.isEmpty() && readingCount < fileTotalReadings){   //  Writes the segment payloads to the file if the list contains data,
+                                                                                // and the reading count isn't at the file total readings count
+                                                                                // (meaning there's more segment payloads to be added, until it reaches the end of the readings in the file)
                 Server.writeReadingsToFile(tempReadings, Protocol.instance.getOutputFileName());
+            } else {
+                System.out.println("SERVER: No more data to be received before timeout");
             }
         }
 
@@ -453,7 +460,6 @@ public class Protocol {
         double ackEfficiency = ((double) usefulTotalBytes / totalBytes) * 100;
         System.out.println("Efficiency: " + ackEfficiency + "%");
         System.out.println("------------------------------------------------" );
-        System.out.println(tempReadings);
 
     }
 
