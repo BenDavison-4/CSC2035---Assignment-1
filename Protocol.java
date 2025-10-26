@@ -184,7 +184,15 @@ public class Protocol {
         //	Adding 1 to the total segments (which will initially be 0) will increase the value of total segments to 1,
         //	MOD 2 leaves the remainder as 1 for the first sequence number, this will display the SEQ# format to start at
         //	1 for the actual readings, in compliance with the model output in the specification.
-        int payloadSeqNum = ((totalSegments + 1) % 2);
+
+//        int payloadSeqNum = ((totalSegments + 1) % 2);
+        //  Alternate the Seq Nums
+        int payloadSeqNum;
+        if (sentReadings == 0){
+            payloadSeqNum = 1;  //  First data Seq after META seg should = 1
+        } else {
+            payloadSeqNum = (dataSeg.getSeqNum() + 1) % 2;  //  Alternates the current data seg Seq num after the first data seg
+        }
         dataSeg = new Segment(payloadSeqNum, SegmentType.Data, activePayload, lengthOfPayload);
 
         //  Sending the segment to the server
@@ -287,7 +295,9 @@ public class Protocol {
                 totalSegments++;
 
                 //	Re-transmitting the lost segment
-                System.out.println("CLIENT: Socket Timeout - ACK[SEQ#" + dataSeg.getSeqNum() + "has been lost");
+                System.out.println("CLIENT: TIMEOUT ALERT");
+                System.out.println("CLIENT: Re-sending the same segment again, current retry: " + currRetry);
+//                System.out.println("CLIENT: Socket Timeout - ACK[SEQ#" + dataSeg.getSeqNum() + "has been lost");
 
                 //	Segment data already read from the input streams in 'receiveAck' - so output streams must be used to write the segment data to the object stream to transfer over a network.
                 ByteArrayOutputStream lostSegOutputStream = new ByteArrayOutputStream();
@@ -386,17 +396,15 @@ public class Protocol {
                         System.out.println("SERVER: Duplicate DATA is detected");
                         System.out.println("SERVER: Sending an Ack of the previous segment");
 
-                        //  Alternates the sequence numbers for the next segment to be received / re-sent
-                        previousSeqNum = previousSeqNum + 1;
-
-
+                        //  Previous Ack segment seq number will not change (being re-sent):
+                        int ackSeqNum = previousSeqNum;
 
                         //  Ack loss simulation
                         if (isLost((loss))) {
-                            System.out.println("SERVER: Simulating ACK loss - ACK{SEQ#" + previousSeqNum + "} is lost");
+                            System.out.println("SERVER: Simulating ACK loss - ACK{SEQ#" + ackSeqNum + "} is lost");
                         } else {
                             //  If the Ack segment isn't lost in the simulation, the server will resend the Ack
-                            Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), previousSeqNum);
+                            Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), ackSeqNum);
 
                         }
 
@@ -408,26 +416,30 @@ public class Protocol {
                         //  - this can cause errors as it could end up being written as a row in the file without actually
                         //  being received by the client - this way I ensure segments are only written to the file IF the Ack is valid (can be received):
 
+
+                        //  Selection statement created to only append the payload of the data seg to the list if it
+                        //  doesn't contain a reading for that segment already - if the segment has already been written to the list,
+                        //  the duplicate won't be added so that the list will only contain ONE instance of each segment
+                        //  - then the Ack can be securely sent back to the client to be received:
+
+                        if (!tempReadings.contains(serverDataSeg.getPayLoad())){
+                            tempReadings.add(serverDataSeg.getPayLoad());   //  Append the payload of the segment to the temporary list - but doesn't add duplicates that fail to be received by the client.
+                            usefulTotalBytes += serverDataSeg.getSize();
+                            readingCount++;
+                        }
+
                         if (isLost((loss))) {
                             System.out.println("SERVER: Simulating ACK loss. ACK[SEQ#" + serverDataSeg.getSeqNum() + "] is lost.");
                         } else {
 
-                            //  Selection statement created to only append the payload of the data seg to the list if it
-                            //  doesn't contain a reading for that segment already - if the segment has already been written to the list,
-                            //  the duplicate won't be added so that the list will only contain ONE instance of each segment
-                            //  - then the Ack can be securely sent back to the client to be received:
-
-                            if (!tempReadings.contains(serverDataSeg.getPayLoad())){
-                                tempReadings.add(serverDataSeg.getPayLoad());   //  Append the payload of the segment to the temporary list - but doesn't add duplicates that fail to be received by the client.
-                                usefulTotalBytes += serverDataSeg.getSize();
-                                readingCount++;
-                            }
-
-
                             Server.sendAck(serverSocket, incomingPacket.getAddress(), incomingPacket.getPort(), serverDataSeg.getSeqNum());
 
                         }
+
+
                     }
+                    //  Alternate the seq num for the next expected segment if the segment isn't a duplicate (has been resent)
+                    previousSeqNum = serverDataSeg.getSeqNum();
 
                 }
 
