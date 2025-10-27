@@ -6,7 +6,6 @@
  */
 import java.io.*;
 import java.net.*;
-//  (AtomicInteger imported to make the alternating sequence number a less complicated soluton to use throught different subroutines
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -253,7 +252,7 @@ public class Protocol {
         if (ackSeg.getType() == SegmentType.Ack) {
             if (ackSeg.getSeqNum() == dataSeg.getSeqNum()) {
                 System.out.println("CLIENT: RECEIVE: ACK[SEQ#" + ackSeg.getSeqNum() + "]");
-                System.out.println("------------------------------------------------------------------");
+                System.out.println("***************************************************************************************************");
                 ackInputStream.close();
                 ackObjectStream.close();
                 return true;
@@ -295,7 +294,6 @@ public class Protocol {
                 currRetry++;
                 totalSegments++;
 
-                //	Re-transmitting the lost segment
                 //	Re-transmitting the lost segment
                 System.out.println("CLIENT: TIMEOUT ALERT");
                 System.out.println("CLIENT: Re-sending the same segment again, current retry: " + currRetry);
