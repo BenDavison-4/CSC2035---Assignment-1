@@ -293,33 +293,31 @@ public class Protocol {
                 //	If no Ack segment is received, and the 'receive()' method for the socket times out -
                 //	the Lost Ack counter is incremented by one, as well as the totalSegments value (as per the spec - each time a segment is transferred this value must be adjusted).
                 currRetry++;
-//                totalSegments++;
+                totalSegments++;
 
                 //	Re-transmitting the lost segment
                 System.out.println("CLIENT: TIMEOUT ALERT");
                 System.out.println("CLIENT: Re-sending the same segment again, current retry: " + currRetry);
 
-                readAndSend();
+                //	Segment data already read from the input streams in 'receiveAck' - so output streams must be used to write the segment data to the object stream to transfer over a network.
+                ByteArrayOutputStream lostSegOutputStream = new ByteArrayOutputStream();
+                ObjectOutputStream lostSegObjectStream = new ObjectOutputStream(lostSegOutputStream);
 
-//                //	Segment data already read from the input streams in 'receiveAck' - so output streams must be used to write the segment data to the object stream to transfer over a network.
-//                ByteArrayOutputStream lostSegOutputStream = new ByteArrayOutputStream();
-//                ObjectOutputStream lostSegObjectStream = new ObjectOutputStream(lostSegOutputStream);
-//
-//                //	Write the contents of the dataSeg to the object stream
-//                lostSegObjectStream.writeObject(dataSeg);
-//                lostSegObjectStream.flush();
-//
-//                //	Create a byte stream as a buffer for the lost Ack segments packet
-//                byte[] lostSegByteStream = lostSegOutputStream.toByteArray();
-//
-//                //	Lost segment packet creation:
-//                DatagramPacket lostSegPacket = new DatagramPacket(lostSegByteStream, lostSegByteStream.length, ipAddress, portNumber);
-//
-//                //	Re-send the packet back to the server
-//                socket.send(lostSegPacket);
-//
-//                lostSegOutputStream.close();
-//                lostSegObjectStream.close();
+                //	Write the contents of the dataSeg to the object stream
+                lostSegObjectStream.writeObject(dataSeg);
+                lostSegObjectStream.flush();
+
+                //	Create a byte stream as a buffer for the lost Ack segments packet
+                byte[] lostSegByteStream = lostSegOutputStream.toByteArray();
+
+                //	Lost segment packet creation:
+                DatagramPacket lostSegPacket = new DatagramPacket(lostSegByteStream, lostSegByteStream.length, ipAddress, portNumber);
+
+                //	Re-send the packet back to the server
+                socket.send(lostSegPacket);
+
+                lostSegOutputStream.close();
+                lostSegObjectStream.close();
             }
         }
 
@@ -397,7 +395,7 @@ public class Protocol {
 
                         //  Ack loss simulation
                         if (isLost((loss))) {
-                            System.out.println("SERVER: Simulating ACK loss - ACK[SEQ#" + ackSeqNum + "] is lost");
+                            System.out.println("SERVER: Simulating ACK loss. ACK[SEQ#" + ackSeqNum + "] is lost");
                             System.out.println("******************************");
                         } else {
                             //  If the Ack segment isn't lost in the simulation, the server will resend the Ack
@@ -553,22 +551,23 @@ public class Protocol {
 
 	public int getFileTotalReadings() {
 		return fileTotalReadings;
-	} 
-
-	public void setFileTotalReadings(int fileTotalReadings) {
-		this.fileTotalReadings = fileTotalReadings;
 	}
 
-	public void setDataSeg(Segment dataSeg) {
-		this.dataSeg = dataSeg;
-	}
+    public void setFileTotalReadings(int fileTotalReadings) {
+        this.fileTotalReadings = fileTotalReadings;
+    }
 
-	public void setAckSeg(Segment ackSeg) {
-		this.ackSeg = ackSeg;
-	}
+    public void setDataSeg(Segment dataSeg) {
+        this.dataSeg = dataSeg;
+    }
 
-	public void setCurrRetry(int currRetry) {
-		this.currRetry = currRetry;
-	}
+    public void setAckSeg(Segment ackSeg) {
+        this.ackSeg = ackSeg;
+    }
+
+    public void setCurrRetry(int currRetry) {
+        this.currRetry = currRetry;
+    }
 
 }
+
