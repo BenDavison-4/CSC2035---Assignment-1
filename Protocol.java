@@ -296,8 +296,10 @@ public class Protocol {
                 totalSegments++;
 
                 //	Re-transmitting the lost segment
+                //	Re-transmitting the lost segment
                 System.out.println("CLIENT: TIMEOUT ALERT");
                 System.out.println("CLIENT: Re-sending the same segment again, current retry: " + currRetry);
+                System.out.println("CLIENT: Send: DATA [SEQ#" + dataSeg.getSeqNum() + "](size:" + dataSeg.getSize() + "," + "crc:" + dataSeg.calculateChecksum() + "," + "content:" + dataSeg.getPayLoad() + ")");
 
                 //	Segment data already read from the input streams in 'receiveAck' - so output streams must be used to write the segment data to the object stream to transfer over a network.
                 ByteArrayOutputStream lostSegOutputStream = new ByteArrayOutputStream();
